@@ -1,0 +1,214 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Shortener</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-violet-50 min-h-screen py-10 px-4">
+    <div class="max-w-3xl mx-auto">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">URL Shortener</h1>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="messages bg-blue-100 border-l-4 border-blue-500 p-4 mb-6 rounded">
+                    {% for message in messages %}
+                        <p class="text-blue-700">{{ message | safe }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" id="shortenerForm" class="mb-8">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="flex gap-4">
+                <input type="url" name="original_url" 
+                    class="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                    placeholder="Enter URL to shorten" required>
+                <button type="submit" id="submitBtn"
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition duration-200 font-medium">
+                    Shorten
+                </button>
+            </div>
+            <div class="flex gap-4 mt-4">
+                <input type="text" name="custom_alias" 
+                    class="flex-1 px-4 py-2 rounded-lg border border-gray-300"
+                    placeholder="Custom alias (optional)">
+                <input type="number" name="expiry_days" 
+                    class="w-32 px-4 py-2 rounded-lg border border-gray-300"
+                    placeholder="Expires in days">
+            </div>
+        </form>
+
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-semibold text-gray-800">Your Shortened URLs</h2>
+                <button id="clearHistory" 
+                    class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition duration-200 text-sm">
+                    Clear History
+                </button>
+            </div>
+            <div id="urlHistory" class="space-y-4"></div>
+        </div>
+
+        <div id="qrCode" class="mt-4 text-center hidden bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-xl font-semibold mb-4">QR Code</h3>
+            <img id="qrCodeImage" class="mx-auto mb-4 w-48 h-48">
+            <div class="flex gap-2 justify-center">
+                <button onclick="downloadQR()" 
+                    class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded transition">
+                    Download QR
+                </button>
+            </div>
+        </div>
+        
+        <div class="flex gap-2 mt-4 justify-center">
+            <button onclick="shareToTwitter()" 
+                class="bg-blue-400 hover:bg-blue-500 text-white px-4 py-2 rounded transition">
+                Share on Twitter
+            </button>
+            <button onclick="shareToLinkedIn()" 
+                class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded transition">
+                Share on LinkedIn
+            </button>
+            <button onclick="shareToWhatsApp()" 
+                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition">
+                Share on WhatsApp
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let currentShortUrl = '';
+
+        function setLoading(isLoading) {
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = isLoading;
+            submitBtn.innerHTML = isLoading ? 
+                '<svg class="animate-spin h-5 w-5 mx-auto" viewBox="0 0 24 24">...</svg>' : 
+                'Shorten';
+        }
+
+        function addToHistory(originalUrl, shortUrl) {
+            let history = JSON.parse(localStorage.getItem('urlHistory') || '[]');
+            history.unshift({
+                originalUrl: originalUrl,
+                shortUrl: shortUrl,
+                date: new Date().toLocaleString()
+            });
+            localStorage.setItem('urlHistory', JSON.stringify(history));
+            displayHistory();
+        }
+
+        function displayHistory() {
+            const history = JSON.parse(localStorage.getItem('urlHistory') || '[]');
+            const historyDiv = document.getElementById('urlHistory');
+            historyDiv.innerHTML = history.map(item => `
+                <div class="bg-gray-50 p-4 rounded-lg hover:shadow-md transition duration-200">
+                    <div class="flex flex-col gap-2">
+                        <a href="${item.shortUrl}" target="_blank" 
+                            class="short-url text-blue-600 hover:text-blue-800 font-medium break-all">
+                            ${item.shortUrl}
+                        </a>
+                        <div class="text-sm text-gray-600">
+                            Original: <a href="${item.originalUrl}" target="_blank" 
+                            class="hover:text-blue-600 break-all">${item.originalUrl}</a>
+                        </div>
+                        <div class="text-xs text-gray-500">Created: ${item.date}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function downloadQR() {
+            const img = document.getElementById('qrCodeImage');
+            const link = document.createElement('a');
+            link.href = img.src;
+            link.download = 'qr-code.png';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function shareToTwitter() {
+            window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(currentShortUrl)}`);
+        }
+
+        function shareToLinkedIn() {
+            window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(currentShortUrl)}`);
+        }
+
+        function shareToWhatsApp() {
+            window.open(`https://wa.me/?text=${encodeURIComponent(currentShortUrl)}`);
+        }
+
+        document.getElementById('clearHistory').addEventListener('click', () => {
+            localStorage.removeItem('urlHistory');
+            displayHistory();
+        });
+
+        document.getElementById('shortenerForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            setLoading(true);
+            const formData = new FormData(this);
+            
+            fetch('/create', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to create short URL');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                currentShortUrl = data.short_url;
+                addToHistory(formData.get('original_url'), data.short_url);
+                
+                const messages = document.querySelector('.messages');
+                if (messages) {
+                    messages.innerHTML = `
+                        <p class="text-blue-700">
+                            Your shortened URL: 
+                            <a href="${data.short_url}" 
+                               class="short-url" 
+                               target="_blank">
+                                ${data.short_url}
+                            </a>
+                        </p>
+                    `;
+                }
+                
+                const qrCodeDiv = document.getElementById('qrCode');
+                const qrCodeImage = document.getElementById('qrCodeImage');
+                qrCodeImage.src = `data:image/png;base64,${data.qr_code}`;
+                qrCodeDiv.classList.remove('hidden');
+                
+                this.reset();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert(error.message || 'An error occurred while shortening the URL');
+            })
+            .finally(() => {
+                setLoading(false);
+            });
+        });
+
+        // Display history on page load
+        displayHistory();
+    </script>
+</body>
+</html>
